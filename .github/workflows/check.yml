@@ -1,0 +1,31 @@
+name: Check
+on: [push, pull_request]
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aquaproj/aqua-installer@96a9bc20066c5bf5e275b41019cfc165b25f4e2e # v4.0.5
+        with:
+          aqua_version: v2.63.0
+          aqua_opts: ""
+        env:
+          AQUA_GITHUB_TOKEN: ${{ github.token }}
+      - run: npm ci
+      - run: uv sync --locked
+      - run: uv run ruff check src tests
+      - run: uv run ruff format --check src tests
+      - run: uv run pytest -q
+      - run: tofu -chdir=infra init -backend=false -input=false -lockfile=readonly
+      - run: tofu -chdir=infra fmt -check
+      - run: tofu -chdir=infra validate
+      - run: tofu -chdir=infra test
+      - run: npx --no-install wrangler deploy --dry-run
+      - run: npm run auth:types
+      - run: npm run auth:check
+      - run: npx --no-install wrangler deploy --config auth/wrangler.jsonc --dry-run
+      - run: npm run auth:test
+      - run: git diff --exit-code -- uv.lock pylock.toml package-lock.json infra/.terraform.lock.hcl aqua-checksums.json

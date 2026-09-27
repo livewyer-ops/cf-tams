@@ -1,0 +1,40 @@
+account_id    = "00000000000000000000000000000000"
+auth_issuer   = "https://cf-tams-auth.YOUR-SUBDOMAIN.workers.dev"
+tams_audience = "https://cf-tams.YOUR-SUBDOMAIN.workers.dev"
+media_origins = []
+
+# Exact receiver hostnames or subdomain patterns such as *.example.com.
+webhook_allowed_hosts = []
+
+# Set origins to the browser application's origin, for example https://editor.example.com.
+api_cors = {
+  origins           = []
+  methods           = ["GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS"]
+  headers           = ["Authorization", "Content-Type"]
+  expose_headers    = ["Location", "Link", "WWW-Authenticate", "X-Paging-Limit", "X-Paging-Count", "X-Paging-Reverse-Order", "X-Paging-NextKey", "X-Paging-Timerange"]
+  max_age_seconds   = 3600
+  allow_credentials = false
+}
+
+# Applied only when media_origins is non-empty.
+media_cors = {
+  methods         = ["GET", "HEAD", "PUT"]
+  headers         = ["Content-Type", "If-None-Match", "Range"]
+  expose_headers  = ["ETag", "Content-Length", "Content-Range", "Accept-Ranges"]
+  max_age_seconds = 3600
+}
+
+storage_backends = {
+  MEDIA = {
+    bucket_name     = "cf-tams-media"
+    storage_id      = "7c21bd04-5a9a-4be0-9a31-3a95cd60c493"
+    label           = "cloudflare:r2"
+    default_storage = true
+  }
+  MEDIA_SECONDARY = {
+    bucket_name = "cf-tams-media-secondary"
+    storage_id  = "c62b7817-ffbe-44e9-b747-c9dc0242efbd"
+    label       = "cloudflare:r2-secondary"
+    tags        = { tier = ["secondary"] }
+  }
+}
