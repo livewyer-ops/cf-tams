@@ -1,0 +1,4 @@
+# Store the Cloudflare deployment token separately as CLOUDFLARE_API_TOKEN
+# in .env. OAuth issuer secrets belong in auth/.dev.vars.
+R2_ACCESS_KEY_ID=replace-with-bucket-scoped-r2-access-key
+R2_SECRET_ACCESS_KEY=replace-with-bucket-scoped-r2-secret-key

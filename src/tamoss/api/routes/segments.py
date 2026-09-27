@@ -1,0 +1,239 @@
+# Adapted from TAMOSS for the Cloudflare Workers runtime.
+from __future__ import annotations
+
+from typing import Annotated, Any
+
+from fastapi import APIRouter, Body, Depends, Path, Query, Request, Response, status
+from fastapi.responses import JSONResponse
+
+from tamoss.api.dependencies import (
+    ResourceUUID,
+    get_deletion_use_cases,
+    get_segment_use_cases,
+)
+from tamoss.api.presenters import (
+    deletion_request_accepted_response,
+    head_response,
+    segment_response,
+    with_page_headers,
+)
+from tamoss.api.query_params import (
+    parse_get_url_labels,
+    parse_storage_backend_tag_filters,
+    parse_storage_ids,
+    storage_backend_tag_filter_parameters,
+    validate_query_params,
+)
+from tamoss.application.contexts.deletion import DeletionUseCases
+from tamoss.application.contexts.segments import SegmentUseCases
+from tamoss.auth import identify_request
+from tamoss.contract.generated import contract_models
+from tamoss.contract.validation import ContractTimerange, strict_contract_model
+from tamoss.errors import BadRequest, error_payload
+
+router = APIRouter(tags=["FlowSegments"])
+
+
+@router.get(
+    "/flows/{flowId}/segments",
+    responses={
+        400: {"description": "Bad request. Invalid query options."},
+        404: {"description": "The Flow ID in the path is invalid."},
+    },
+    dependencies=[Depends(storage_backend_tag_filter_parameters)],
+)
+@router.head(
+    "/flows/{flowId}/segments",
+    responses={
+        400: {"description": "Bad request. Invalid query options."},
+        404: {"description": "The Flow ID in the path is invalid."},
+    },
+    dependencies=[Depends(storage_backend_tag_filter_parameters)],
+)
+async def list_segments(
+    flow_id: Annotated[ResourceUUID, Path(alias="flowId")],
+    request: Request,
+    response: Response,
+    object_id: str | None = None,
+    timerange: ContractTimerange | None = None,
+    reverse_order: bool = False,
+    verbose_storage: bool = False,
+    accept_get_urls: str | None = None,
+    accept_storage_ids: str | None = None,
+    presigned: bool | None = None,
+    include_object_timerange: bool = False,
+    page: str | None = None,
+    limit: int | None = Query(default=None, gt=0),
+    segments: SegmentUseCases = Depends(get_segment_use_cases),
+) -> Any:
+    validate_query_params(
+        request,
+        {
+            "object_id",
+            "timerange",
+            "reverse_order",
+            "verbose_storage",
+            "accept_get_urls",
+            "accept_storage_ids",
+            "presigned",
+            "include_object_timerange",
+            "page",
+            "limit",
+        },
+        allowed_prefixes=(
+            "storage_backend_tag.",
+            "storage_backend_tag_exists.",
+        ),
+    )
+    accepted_labels = parse_get_url_labels(accept_get_urls)
+    accepted_storage_ids = parse_storage_ids(accept_storage_ids)
+    storage_tag_values, storage_tag_exists = parse_storage_backend_tag_filters(request)
+    segment_page = segments.list_segments(
+        flow_id=flow_id,
+        object_id=object_id,
+        timerange=timerange,
+        reverse_order=reverse_order,
+        page=page,
+        limit=limit,
+    )
+    with_page_headers(response, request, segment_page)
+    response.headers["X-Paging-Reverse-Order"] = str(reverse_order).lower()
+    response.headers["X-Paging-Timerange"] = segment_page.timerange or "()"
+    if head := head_response(request, response):
+        return head
+    objects_by_id = segments.segment_objects(segment_page.items)
+    get_urls_by_object_id = segments.segment_get_urls(
+        segment_page.items,
+        objects_by_id=objects_by_id,
+        accept_get_urls=accepted_labels,
+        accept_storage_ids=accepted_storage_ids,
+        presigned=presigned,
+        verbose_storage=verbose_storage,
+        storage_tag_values=storage_tag_values,
+        storage_tag_exists=storage_tag_exists,
+    )
+    return [
+        segment_response(
+            segment,
+            get_urls_by_object_id.get(segment.object_id, []),
+            init_object=objects_by_id.get(segment.init_object_id)
+            if segment.init_object_id is not None
+            else None,
+            init_get_urls=get_urls_by_object_id.get(segment.init_object_id, [])
+            if segment.init_object_id is not None
+            else [],
+            include_object_timerange=include_object_timerange,
+        )
+        for segment in segment_page.items
+    ]
+
+
+@router.post(
+    "/flows/{flowId}/segments",
+    status_code=status.HTTP_201_CREATED,
+    response_class=Response,
+    responses={
+        200: {
+            "description": "Some Flow Segments failed validation.",
+            "model": contract_models.FlowSegmentBulkFailure,
+        },
+        400: {"description": "Bad request. Invalid Flow Segment JSON."},
+        403: {"description": "Forbidden."},
+        404: {"description": "The requested Flow does not exist."},
+    },
+)
+async def post_segments(
+    flow_id: Annotated[ResourceUUID, Path(alias="flowId")],
+    body: object = Body(...),
+    segments: SegmentUseCases = Depends(get_segment_use_cases),
+) -> Any:
+    try:
+        validated_body = (
+            [
+                strict_contract_model(
+                    contract_models.FlowSegmentPost,
+                    item,
+                    recursive_non_nullable_fields=(
+                        contract_models.FlowSegmentPost.model_fields
+                    ),
+                )
+                for item in body
+            ]
+            if isinstance(body, list)
+            else strict_contract_model(
+                contract_models.FlowSegmentPost,
+                body,
+                recursive_non_nullable_fields=(
+                    contract_models.FlowSegmentPost.model_fields
+                ),
+            )
+        )
+    except (TypeError, ValueError) as exc:
+        raise BadRequest("Bad request. Invalid Flow Segment JSON.") from exc
+
+    # The validated models are handed to the use case directly so the payload
+    # is not re-validated against the contract a second time.
+    if isinstance(validated_body, list):
+        failed: list[contract_models.FailedSegment] = []
+        for segment, result in zip(
+            validated_body,
+            segments.register_segments(
+                flow_id=flow_id,
+                segment_posts=validated_body,
+            ),
+            strict=True,
+        ):
+            if result.error:
+                failed.append(
+                    contract_models.FailedSegment(
+                        object_id=segment.object_id,
+                        timerange=segment.timerange,
+                        error=error_payload("TAMSError", result.error),
+                    )
+                )
+        if failed:
+            return JSONResponse(
+                status_code=status.HTTP_200_OK,
+                content=contract_models.FlowSegmentBulkFailure(
+                    failed_segments=failed
+                ).model_dump(exclude_none=True, mode="json"),
+            )
+        return Response(status_code=status.HTTP_201_CREATED)
+
+    result = segments.register_segment(flow_id=flow_id, segment_post=validated_body)
+    if result.error:
+        raise BadRequest(result.error)
+    return Response(status_code=status.HTTP_201_CREATED)
+
+
+@router.delete(
+    "/flows/{flowId}/segments",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        202: {
+            "description": "Deletion accepted.",
+            "model": contract_models.DeletionRequest,
+        },
+        400: {"description": "Bad request."},
+        403: {"description": "Forbidden."},
+        404: {"description": "The requested Flow ID in the path is invalid."},
+    },
+)
+async def delete_segments(
+    flow_id: Annotated[ResourceUUID, Path(alias="flowId")],
+    request: Request,
+    timerange: ContractTimerange | None = None,
+    object_id: str | None = None,
+    deletion: DeletionUseCases = Depends(get_deletion_use_cases),
+) -> Response:
+    validate_query_params(request, {"timerange", "object_id"})
+    identity = identify_request(request)
+    delete_request = deletion.delete_segments(
+        flow_id=flow_id,
+        timerange=timerange,
+        object_id=object_id,
+        identity=identity,
+    )
+    if delete_request is not None:
+        return deletion_request_accepted_response(delete_request, request)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

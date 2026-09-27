@@ -1,0 +1,67 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "cf-tams",
+  "main": "src/main.py",
+  "build": {
+    "command": "uv run --locked pywrangler sync"
+  },
+  "compatibility_date": "2026-09-22",
+  "compatibility_flags": [
+    "python_workers"
+  ],
+  "workers_dev": true,
+  "secrets": {
+    "required": [
+      "R2_ACCESS_KEY_ID",
+      "R2_SECRET_ACCESS_KEY"
+    ]
+  },
+  "observability": {
+    "enabled": true
+  },
+  "services": [
+    {
+      "binding": "AUTH",
+      "service": "cf-tams-auth",
+      "entrypoint": "TokenVerifier"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "STORE",
+        "class_name": "TamsStore"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "TamsStore"
+      ]
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "MEDIA",
+      "bucket_name": "cf-tams-media"
+    }
+  ],
+  "vars": {
+    "API_CORS": "{}",
+    "STORE_ID": "default",
+    "R2_ENDPOINT": "https://ACCOUNT_ID.r2.cloudflarestorage.com",
+    "WEBHOOK_ALLOWED_HOSTS": "[]",
+    "STORAGE_BACKENDS": "{\"MEDIA\":{\"bucket_name\":\"cf-tams-media\",\"storage_id\":\"7c21bd04-5a9a-4be0-9a31-3a95cd60c493\",\"label\":\"cloudflare:r2\",\"default_storage\":true}}"
+  },
+  "rules": [
+    {
+      "type": "Data",
+      "globs": [
+        "**/*.json"
+      ],
+      "fallthrough": true
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+CF TAMS includes modified TAMOSS source, copyright 2026 Livewyer Ltd.
+Licensed under Apache-2.0; see LICENSE.
+
+TAMOSS revision: 5ded5e4e26a87c986c2c1635ef405ad1c1869cf5
+The API, contract, domain and application modules in src/tamoss derive from
+that revision, with TAMS 8.2 conformance corrections from RC3 revision
+4c0b57707394998cccb5517c99a4f392d09037da. Cloudflare adaptations carry a notice
+in their first line.
+The repository listing behaviour derives from tests/support/memory_repository.py;
+persistence, transaction boundaries and indexed segment queries are replaced.
+
+The packaged contract and generated models derive from BBC TAMS 8.2,
+https://github.com/bbc/tams/tree/8.2, copyright BBC, licensed under Apache-2.0.
