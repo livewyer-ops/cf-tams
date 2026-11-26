@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dev": "sh scripts/dev.sh",
     "test": "node --test tests/install-runtime.test.mjs",
     "runtime:install": "node scripts/install-runtime.mjs",
     "auth:client": "node scripts/auth-client.mjs"

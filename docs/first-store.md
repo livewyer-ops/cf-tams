@@ -1,38 +1,39 @@
 # Your first local store
 
-Use Wrangler's local Durable Object and R2 emulation to start a Free-profile store. In a new installer checkout, follow [Set up tools](deployment.md#set-up-tools) to install the pinned runtime. From the repository root, copy its API modules into a local development directory.
+On Linux or macOS, use Node.js with npm, tar and curl 7.82 or later. The [tool manifest](../aqua.yaml) pins the Node.js version. Wrangler runs the database and R2 storage on your computer. You can follow this tutorial without a Cloudflare account.
+
+From the repository root, install the dependencies and start the store.
 
 ```sh
-digest=$(node -p 'require("./runtime.lock.json").sha256')
-mkdir -p .local
-cp -R ".runtime/$digest/api" .local/first-store
-node --input-type=module <<'JS'
-import { writeFileSync } from 'node:fs';
-import { randomBytes } from 'node:crypto';
-const password = randomBytes(32).toString('hex');
-writeFileSync('.local/first-store/.dev.vars', [
-  'BASIC_AUTH_USERNAME=operator', 'BASIC_AUTH_PASSWORD=' + password,
-  'R2_ACCESS_KEY_ID=local', 'R2_SECRET_ACCESS_KEY=local',
-].join('\n') + '\n', { flag: 'wx', mode: 0o600 });
-JS
-npx wrangler dev --local --config .local/first-store/wrangler.json --port 8787
+npm ci
+npm run dev
 ```
 
-In another terminal in the same checkout, read the service description and create an empty data Flow.
+The first start downloads and verifies the pinned TASM release. When Wrangler is ready, open a second terminal in the same checkout and read the service description using the generated local credentials.
 
 ```sh
-. ./.local/first-store/.dev.vars
-api=http://127.0.0.1:8787
-flow=$(node -p 'crypto.randomUUID()')
-source=$(node -p 'crypto.randomUUID()')
-curl --fail --user "$BASIC_AUTH_USERNAME:$BASIC_AUTH_PASSWORD" "$api/service"
-curl --fail --user "$BASIC_AUTH_USERNAME:$BASIC_AUTH_PASSWORD" \
-  -X PUT -H 'Content-Type: application/json' \
-  -d "{\"id\":\"$flow\",\"source_id\":\"$source\",\"format\":\"urn:x-nmos:format:data\",\"codec\":\"application/json\",\"essence_parameters\":{}}" \
-  "$api/flows/$flow"
-curl --fail --user "$BASIC_AUTH_USERNAME:$BASIC_AUTH_PASSWORD" "$api/flows/$flow"
+curl --fail --netrc-file .local/first-store/netrc http://127.0.0.1:8787/service
 ```
 
-The service response includes `api_version` set to `8.2`. The final GET returns the Flow you created with its `id` equal to `$flow`.
+Look for `"api_version": "8.2"` in the response.
 
-Stop the local Worker with Ctrl-C. Restart it with the same Wrangler configuration to reopen the store. For signed media transfers and OAuth provisioning, follow [Deploy and operate](deployment.md#install).
+## Create and read a Flow
+
+Use this example data Flow to try a write. The Flow ID in the URL matches the `id` in the request body.
+
+```sh
+flow=http://127.0.0.1:8787/flows/00000000-0000-4000-8000-000000000101
+curl --fail --netrc-file .local/first-store/netrc --request PUT "$flow" \
+  --json '{
+    "id": "00000000-0000-4000-8000-000000000101",
+    "source_id": "00000000-0000-4000-8000-000000000102",
+    "format": "urn:x-nmos:format:data",
+    "codec": "application/json",
+    "essence_parameters": {}
+  }'
+curl --fail --netrc-file .local/first-store/netrc "$flow"
+```
+
+The final request returns the Flow with the same `id`. Press Ctrl-C in the first terminal to stop the Worker. Run `npm run dev` again and repeat the final request to read the saved Flow.
+
+To try signed media transfers or OAuth, [deploy to Cloudflare](deployment.md#install).
