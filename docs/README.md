@@ -6,7 +6,7 @@
 
 ## How-to guides
 
-- [Deploy and operate](deployment.md): [install](deployment.md#install), [add storage](deployment.md#add-a-storage-backend), [configure browser access](deployment.md#configure-browser-access), [enable webhooks](deployment.md#enable-webhooks), [qualify](deployment.md#qualify-the-api), [update and recover](deployment.md#update-and-recover), or [decommission](deployment.md#decommission-an-installation).
+- [Deploy and operate](deployment.md): [install](deployment.md#install), [add storage](deployment.md#add-a-storage-backend), [configure browser access](deployment.md#configure-browser-access), [enable webhooks](deployment.md#enable-webhooks), [verify the API and media](deployment.md#verify-the-api-and-media), [update and recover](deployment.md#update-and-recover), or [decommission](deployment.md#decommission-an-installation).
 - [Configure OAuth clients](oauth.md): provision clients, connect [TAMSTool](oauth.md#tamstool) or [Cutting Room](oauth.md#cutting-room), and rotate or disable credentials.
 - [Troubleshooting](troubleshooting.md): investigate failed requests and playback problems.
 - [Contributing](../CONTRIBUTING.md): set up a development checkout and run checks.

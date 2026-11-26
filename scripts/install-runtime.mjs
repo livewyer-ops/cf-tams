@@ -17,7 +17,7 @@ try {
   } else {
     const url = `https://github.com/${lock.repository}/releases/download/v${lock.version}/${asset}`;
     const result = await fetch(url, { signal: AbortSignal.timeout(60_000) });
-    if (!result.ok) throw new Error(`Download failed (HTTP ${result.status}). For a private release, download ${asset} with gh release download and pass the file path.`);
+    if (!result.ok) throw new Error(`Download failed (HTTP ${result.status}). Check that the pinned release contains ${asset}.`);
     source = result.body;
   }
   const hash = createHash('sha256');

@@ -6,4 +6,4 @@ A media allocation returns a signed PUT URL and required headers. Clients transf
 
 Free configures Basic authentication. Paid adds an OAuth Worker whose private verification entry point checks bearer tokens. D1 stores the client registrations and encrypted signing keys. Both profiles deploy the same API modules.
 
-The browser SDK implements the same TAMS rules using PostgreSQL in PGlite and browser-private files. The Demo and Playpen each host a complete browser runtime. The hosted API has its own store identity and lifecycle. [TASM source and browser architecture](https://github.com/livewyer-ops/tasm)
+The browser SDK implements the same TAMS rules using PostgreSQL in PGlite and browser-private files. The Demo and Playpen each host their own browser runtime. The hosted API has its own store identity and lifecycle. [TASM source and browser architecture](https://github.com/livewyer-ops/tasm)

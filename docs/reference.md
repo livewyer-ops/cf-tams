@@ -47,7 +47,7 @@ Both profiles use the same API, metadata schema, storage backends and migration 
 
 All controlled backends are private R2 Standard buckets in the same account, using one media CORS policy and one signing credential scoped to those buckets. The generated `STORAGE_BACKENDS` registry and R2 bindings come from the same input. Discover runtime IDs through `/service/storage-backends`.
 
-Backend IDs, bucket names and endpoints are permanent identities once persisted; the store rejects removal or remapping. Labels, tags and the default may change. `STORE_ID` selects the installation's Durable Object and defaults to `wasm-experiment`. Preserve it, the `WasmStore` class and its migration history across updates.
+Backend IDs, bucket names and endpoints are permanent identities once persisted; the store rejects removal or remapping. Labels, tags and the default may change. `STORE_ID` selects the installation's Durable Object and defaults to the value in the packaged API configuration. Preserve it, the `WasmStore` class and its migration history across updates.
 
 ### CORS defaults
 
@@ -102,13 +102,13 @@ The Free profile has one configured account with full store access. Its username
 | Scope | Access |
 | --- | --- |
 | `tams-api/read` | Browse metadata, Profiles and webhooks; obtain playback URLs. |
-| `tams-api/write` | Create and update Flows, Profiles, metadata and webhooks; allocate uploads, register Segments, and copy or delete Object instances. |
+| `tams-api/write` | Create and update Flows, Profiles and metadata; delete webhooks; allocate uploads, register Segments, and copy or delete Object instances. |
 | `tams-api/delete` | Delete Flows or Segments and inspect individual deletion requests. |
 | `tams-api/admin` | All operations, including service configuration, changing `read_only` and listing all deletion requests. |
 
 Write and delete do not imply read. All these scopes permit service discovery. Empty or unrelated scopes grant no API access. Insufficient permissions return 403 with an `insufficient_scope` bearer challenge.
 
-The policy follows the [BBC TAMS 8.2 coarse-grained authorisation model](https://github.com/bbc/tams/blob/8.2/docs/appnotes/0016-authorisation-in-tams-workflows.md). Webhook PUT and DELETE require write permission, a deliberate restriction relative to the application note's suggested read permission. Profiles follow the ordinary read/write split. Changing `read_only` through a full Flow PUT also requires administrator permission.
+The policy follows the [BBC TAMS 8.2 coarse-grained authorisation model](https://github.com/bbc/tams/blob/8.2/docs/appnotes/0016-authorisation-in-tams-workflows.md). Creating or replacing a webhook requires both `tams-api/read` and `tams-api/write`, or `tams-api/admin`. Deleting a webhook requires `tams-api/write` or `tams-api/admin`. Profiles follow the ordinary read/write split. Changing `read_only` through a full Flow PUT also requires administrator permission.
 
 Clients use their registered method: `client_secret_basic` by default, or `client_secret_post` when provisioned with `--method`. Omitted `scope` uses the client's authorised defaults; omitted `resource` targets this installation's TAMS API. Refresh tokens and interactive login grants are not provided.
 

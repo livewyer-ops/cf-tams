@@ -100,12 +100,6 @@ Rotation invalidates the previous client secret immediately. Disabling removes t
 
 Restore a disabled client by assigning scopes again. If a client secret is lost, rotate it. Recover the operator password and `BETTER_AUTH_SECRET` from protected backups; arbitrarily replacing the latter prevents decryption of stored signing keys.
 
-## Generate a schema migration
+## Apply issuer migrations
 
-After an auth dependency update, generate SQL against a local database containing the currently applied migrations. Choose the next unused migration filename:
-
-```sh
-npm run auth:client -- schema --output auth/migrations/0002_auth.sql
-```
-
-Review the SQL, apply it locally with Wrangler and run the tests before applying it remotely. Runtime requests do not create or alter the schema. Preserve the D1 database and issuer URL across deployments; changing the issuer requires updating clients and API verification configuration.
+The TASM release supplies the D1 migrations. Apply them using the generated issuer configuration before deploying the new issuer. Preserve the database, issuer URL and signing-key encryption secret across deployments. See [Install](deployment.md#install).

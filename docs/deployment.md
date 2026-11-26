@@ -14,15 +14,6 @@ npm run runtime:install
 
 Aqua pins Node.js and OpenTofu. npm installs Wrangler. The runtime installer verifies the archive against `runtime.lock.json` and extracts it into a directory named for its digest under `.runtime/`. To use a local archive, pass its path to `npm run runtime:install -- /path/to/archive.tar.gz`.
 
-For a private TASM release, download its asset with an authorised GitHub account, then install the file locally.
-
-```sh
-version=$(node -p 'require("./runtime.lock.json").version')
-mkdir -p .local/releases
-gh release download "v$version" --repo livewyer-ops/tasm --pattern "tasm-cloudflare-$version.tar.gz" --dir .local/releases
-npm run runtime:install -- ".local/releases/tasm-cloudflare-$version.tar.gz"
-```
-
 On a glibc Linux system that also has musl installed, Aqua can select the musl Node.js build. Set `AQUA_LIBC=glibc` in the shell before installing or running tools if that build fails to load. This uses Aqua's native [libc selection](https://aquaproj.github.io/docs/reference/registry-config/overrides/).
 
 ## Install
@@ -34,7 +25,7 @@ Complete [tool setup](#set-up-tools). A Cloudflare account with R2 enabled and d
 | `free` | Fixed HTTP Basic username and password; full store access. | API Worker, SQLite Durable Object and private R2 buckets. |
 | `paid` (default) | OAuth client credentials and scoped JWTs. | The same store, plus an OAuth Worker and D1 database. |
 
-The profile selects application resources and authentication. It does not change the Cloudflare subscription, enforce spending caps or limit API features. The Free profile is available for evaluation. The pinned runtime passed the standalone TAMS API and signed-media checks on Workers Free and Workers Paid. Hosted webhook qualification is pending. Production support requires Workers Paid. Check Cloudflare's current [Workers](https://developers.cloudflare.com/workers/platform/limits/), [Durable Object](https://developers.cloudflare.com/durable-objects/platform/pricing/) and [R2](https://developers.cloudflare.com/r2/pricing/) allowances against actual use.
+The profile selects application resources and authentication. It does not change the Cloudflare subscription, enforce spending caps or limit API features. The Free profile is available for evaluation. Production support requires Workers Paid. Check Cloudflare's current [Workers](https://developers.cloudflare.com/workers/platform/limits/), [Durable Object](https://developers.cloudflare.com/durable-objects/platform/pricing/) and [R2](https://developers.cloudflare.com/r2/pricing/) allowances against actual use.
 
 Set the following installation inputs. To retain an existing Wasm store, keep its Worker name, `wasm_store_id`, backend UUIDs and bucket names. Set `wasm_custom_domains` for hostnames in active Cloudflare zones. Set `wasm_anonymous_read = true` to allow public reads while requiring credentials for writes and restricting administrative reads.
 
@@ -209,13 +200,14 @@ API preflight requests are public. Actual requests follow the configured authent
 
 For example, start Wrangler with `--var 'API_CORS:{"origins":["http://localhost:3000"]}'`. Send an OPTIONS request with that Origin and inspect the access-control headers.
 
-## Qualify the API
+## Verify the API and media
 
-Use a disposable installation. For Free, select HTTP Basic in the checker and supply its configured username and password. For Paid, provision a dedicated checker client with `tams-api/admin`, select OAuth client credentials and supply its token endpoint, client ID and secret using the registered authentication method. Permit the checker's callback hostname through [the webhook allowlist](#enable-webhooks). Open a deployed [TAMS Checker](https://github.com/livewyer-ops/tams-checker), enter this installation's HTTPS URL, complete Turnstile and run the TAMS 8.2 API checks. Keep the browser open until execution and cleanup finish, then export the report. Record the profile and deployed Worker versions with the report so it identifies the candidate tested.
+Use a disposable store and authenticate with the profile's Basic credentials or a scoped OAuth token. Request `GET /readyz` and check for HTTP 200. Request `GET /service` and check that `api_version` is `8.2`.
 
-The checker creates and cleans up its own resources. Immutable test Profiles remain because BBC TAMS provides no Profile deletion operation; the report also lists any other cleanup residuals. It does not update shared Service metadata. A complete Pass covers the checker's published API scope, including immediate media transfer and advertised webhooks. Elapsed URL and Object lifetimes, physical reclamation and its other documented exclusions are outside that verdict.
-
-For command-line runs, follow the [checker CLI workflow](https://github.com/livewyer-ops/tams-checker/blob/main/docs/run-checks.md). Standalone execution runs the checks locally without browser verification and excludes webhook management and delivery. To include webhooks, select a deployed checker with `--validator` and supply its required fresh browser verification token. Record the selected scope with the report.
+1. Create a Flow and [allocate and upload a small media object](#use-media-urls). Include every header returned for the signed PUT.
+2. Register a Segment referencing the uploaded object. Request `GET /flows/{flowId}/segments` with its time range and `presigned=true`. Check the returned object ID.
+3. Send a GET to the returned R2 URL with `Range: bytes=0-3` for a sample at least four bytes long. Expect HTTP 206 and the first four bytes of the uploaded file. Keep API credentials on the API origin.
+4. After redeployment, repeat the Segment lookup and use the fresh signed URL to read the same bytes. If the installation uses webhooks, register its configured receiver and verify delivery of a subscribed event.
 
 ## Maintain dependencies
 
