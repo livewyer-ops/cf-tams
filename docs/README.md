@@ -1,12 +1,11 @@
 # Documentation
 
-## Tutorial
-
-[Your first local store](first-store.md) takes you through starting the API Worker, connecting with Basic credentials and creating a Flow. It needs no Cloudflare account.
+- [Try locally](first-store.md) to start a store and create your first Flow.
+- [Deploy to Cloudflare](deployment.md#install) to run a store in your own account.
 
 ## How-to guides
 
-- [Deploy and operate](deployment.md): [install](deployment.md#install), [add storage](deployment.md#add-a-storage-backend), [configure browser access](deployment.md#configure-browser-access), [enable webhooks](deployment.md#enable-webhooks), [verify the API and media](deployment.md#verify-the-api-and-media), [update and recover](deployment.md#update-and-recover), or [decommission](deployment.md#decommission-an-installation).
+- [Operate your store](deployment.md) covers [adding storage](deployment.md#add-a-storage-backend), [browser access](deployment.md#configure-browser-access), [webhooks](deployment.md#enable-webhooks), [verification](deployment.md#verify-the-api-and-media), [updates and recovery](deployment.md#update-and-recover) and [decommissioning](deployment.md#decommission-an-installation).
 - [Configure OAuth clients](oauth.md): provision clients, connect [TAMSTool](oauth.md#tamstool) or [Cutting Room](oauth.md#cutting-room), and rotate or disable credentials.
 - [Troubleshooting](troubleshooting.md): investigate failed requests and playback problems.
 - [Contributing](../CONTRIBUTING.md): set up a development checkout and run checks.

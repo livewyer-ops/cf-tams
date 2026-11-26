@@ -11,15 +11,15 @@ set -a
 . ./.env
 . ./auth/.env.operator
 set +a
-npm run auth:client -- bootstrap --config auth/wrangler.deploy.json --remote
+npm run auth:client -- bootstrap --remote
 ```
 
-Bootstrap creates the private operator account and TAMS resource. Run it once per database. For a local issuer, omit `--remote` and pass the path to its local Wrangler configuration.
+Bootstrap creates the private operator account and TAMS resource. Run it once per database. The CLI uses `auth/wrangler.deploy.json` by default. For a local issuer, omit `--remote` and pass `--config` with the path to its local Wrangler configuration.
 
 Create an independent client for each application or operator. For example, to grant read access:
 
 ```sh
-npm run auth:client -- create --config auth/wrangler.deploy.json --remote \
+npm run auth:client -- create --remote \
   --name reader --scopes tams-api/read --output auth/.reader-credentials.json
 ```
 
@@ -36,8 +36,8 @@ Configure the application's OAuth client credentials option with the TAMS API UR
 Create a read-only playback client using Basic authentication:
 
 ```sh
-npm run auth:client -- create --config auth/wrangler.deploy.json --remote \
-  --name tamstool --method client_secret_basic --scopes tams-api/read \
+npm run auth:client -- create --remote \
+  --name tamstool --scopes tams-api/read \
   --output auth/.tamstool-credentials.json
 ```
 
@@ -48,7 +48,7 @@ In TAMSTool, select **Client / Secret**, enter those credentials and the store U
 Create a client using credentials in the form body, with read and write access:
 
 ```sh
-npm run auth:client -- create --config auth/wrangler.deploy.json --remote \
+npm run auth:client -- create --remote \
   --name cuttingroom --method client_secret_post \
   --scopes tams-api/read,tams-api/write --output auth/.cuttingroom-credentials.json
 ```
@@ -72,27 +72,27 @@ Use the [OAuth permission reference](reference.md#oauth-permissions) to select s
 Load the deployment credential and operator password as in [Provision clients](#provision-clients). List clients to find the ID, then choose the relevant command below:
 
 ```sh
-npm run auth:client -- list --config auth/wrangler.deploy.json --remote
+npm run auth:client -- list --remote
 ```
 
 Rotate a secret, saving the replacement to a new protected file:
 
 ```sh
-npm run auth:client -- rotate --config auth/wrangler.deploy.json --remote \
+npm run auth:client -- rotate --remote \
   --client CLIENT_ID --output auth/.rotated-credentials.json
 ```
 
 Change the allowed scopes:
 
 ```sh
-npm run auth:client -- scopes --config auth/wrangler.deploy.json --remote \
+npm run auth:client -- scopes --remote \
   --client CLIENT_ID --scopes tams-api/read,tams-api/write
 ```
 
 Disable new token issuance:
 
 ```sh
-npm run auth:client -- disable --config auth/wrangler.deploy.json --remote \
+npm run auth:client -- disable --remote \
   --client CLIENT_ID
 ```
 

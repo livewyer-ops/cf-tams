@@ -62,7 +62,7 @@ Origins contain a scheme, hostname and optional port, without paths or trailing 
 | `max_age_seconds` | `3600`; non-negative integer. | `3600`; integer from 0 to 86400. |
 | `allow_credentials` | `false` | Not an input. |
 
-API preflight requests with an allowed origin, method and headers return 200 without authentication. A rejected preflight returns 400. With no configured origins, API CORS handling is disabled. Actual API requests still require authentication.
+API preflight requests with an allowed origin, method and headers return 200 without authentication. A rejected preflight returns 400. With no configured origins, API CORS handling is disabled. Actual requests follow the configured authentication and anonymous-read policy.
 
 R2 handles OPTIONS preflights through its bucket policy. Set `media_cors.methods` to the actual request methods, such as GET or PUT; OPTIONS is not a valid input there.
 
@@ -78,15 +78,15 @@ The same allowlist applies to registration, updates and delivery. Receiver URLs 
 
 ## Endpoints
 
-Paths below are relative to the indicated Worker origin. Local origins are `http://127.0.0.1:8787` for TAMS and `http://127.0.0.1:8788` for OAuth.
+Paths below are relative to the indicated Worker origin. Local origins are `http://127.0.0.1:8787` for TAMS and `http://127.0.0.1:8788` for OAuth. The TAMS endpoints listed here require the profile's Basic or OAuth credentials by default, except for the public health check. Enabling `wasm_anonymous_read` makes all the listed TAMS reads public.
 
 | Worker | Method and path | Access and purpose |
 | --- | --- | --- |
 | TAMS | `GET /healthz` | Public liveness check. |
-| TAMS | `GET /readyz` | Checks SQLite and each R2 bucket. Requires credentials unless anonymous reads are enabled. |
-| TAMS | `GET /openapi.json` | Basic or OAuth; served TAMS API contract. |
-| TAMS | `GET /service` | Basic or OAuth; service discovery. |
-| TAMS | `GET /service/storage-backends` | Basic or OAuth; configured storage backends. |
+| TAMS | `GET /readyz` | Checks SQLite and each R2 bucket. |
+| TAMS | `GET /openapi.json` | Serves the TAMS API contract. |
+| TAMS | `GET /service` | Service discovery. |
+| TAMS | `GET /service/storage-backends` | Lists configured storage backends. |
 | OAuth | `POST /api/auth/oauth2/token` | Client credentials, form encoded; `grant_type=client_credentials`. |
 | OAuth | `GET /.well-known/oauth-authorization-server` | Public OAuth discovery. |
 | OAuth | `GET /api/auth/jwks` | Public signing keys. |

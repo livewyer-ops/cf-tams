@@ -4,7 +4,7 @@ Use these guides to operate a Cloudflare installation. For a first API exercise 
 
 ## Set up tools
 
-Install [Aqua](https://aquaproj.github.io/docs/install/) using its verified installer and add its binary directory to your shell's `PATH`. The [CI configuration](../.github/workflows/check.yml) records the tested Aqua version. From the repository root, run:
+You need tar and [Aqua](https://aquaproj.github.io/docs/install/). Use Aqua's verified installer and add its binary directory to your shell's `PATH`. The [CI configuration](../.github/workflows/check.yml) records the tested Aqua version. From the repository root, run:
 
 ```sh
 aqua install
@@ -18,29 +18,24 @@ On a glibc Linux system that also has musl installed, Aqua can select the musl N
 
 ## Install
 
-Complete [tool setup](#set-up-tools). A Cloudflare account with R2 enabled and deployment credentials is required. Select the application profile in `infra/terraform.tfvars`:
+Complete [tool setup](#set-up-tools) and enable R2 in your Cloudflare account. Choose a profile for this installation.
 
-| `deployment_profile` | API authentication | Resources |
+| Profile | API authentication | Resources |
 | --- | --- | --- |
-| `free` | Fixed HTTP Basic username and password; full store access. | API Worker, SQLite Durable Object and private R2 buckets. |
-| `paid` (default) | OAuth client credentials and scoped JWTs. | The same store, plus an OAuth Worker and D1 database. |
+| `free` | Shared HTTP Basic credentials with full store access | API Worker, SQLite Durable Object and private R2 buckets |
+| `paid` (default) | OAuth client credentials and scoped JWTs | The same store, plus an OAuth Worker and D1 database |
 
-The profile selects application resources and authentication. It does not change the Cloudflare subscription, enforce spending caps or limit API features. The Free profile is available for evaluation. Production support requires Workers Paid. Check Cloudflare's current [Workers](https://developers.cloudflare.com/workers/platform/limits/), [Durable Object](https://developers.cloudflare.com/durable-objects/platform/pricing/) and [R2](https://developers.cloudflare.com/r2/pricing/) allowances against actual use.
+Both profiles provide the same TAMS API. Free is available for evaluation. Production support requires Workers Paid. Account billing and spending caps are managed separately in Cloudflare. Check the [Workers](https://developers.cloudflare.com/workers/platform/limits/), [Durable Object](https://developers.cloudflare.com/durable-objects/platform/pricing/) and [R2](https://developers.cloudflare.com/r2/pricing/) allowances for your expected usage.
 
-Set the following installation inputs. To retain an existing Wasm store, keep its Worker name, `wasm_store_id`, backend UUIDs and bucket names. Set `wasm_custom_domains` for hostnames in active Cloudflare zones. Set `wasm_anonymous_read = true` to allow public reads while requiring credentials for writes and restricting administrative reads.
+### Provision the resources
 
-- Set `deployment_profile` and `account_id` in `infra/terraform.tfvars`, following [terraform.tfvars.example](../infra/terraform.tfvars.example). For Paid, also set `auth_issuer` and `tams_audience` to the public HTTPS origins of the auth and TAMS Workers, without trailing slashes. Free does not require those URLs. `storage_backends` defaults to the original `MEDIA` bucket; `media_origins` defaults to no browser access.
-- Set `webhook_allowed_hosts` in the same file to permit webhook receivers. It defaults to an empty list, which rejects all registrations; see [Enable webhooks](#enable-webhooks).
-- Put `CLOUDFLARE_API_TOKEN` in the ignored `.env` file and load it into the process environment for both tools. It needs Workers Scripts and Workers R2 Storage write access, plus D1 write access for Paid; account lookup and log inspection also use Account Settings read and Workers Tail permissions.
-- Put `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` in `.dev.vars`, following `.dev.vars.example`. They need Object Read & Write access to the installation's configured buckets. On a new installation, create this signing credential after OpenTofu has provisioned the buckets and before deploying the TAMS Worker.
-- For Free, add `BASIC_AUTH_USERNAME` and a separately generated `BASIC_AUTH_PASSWORD` of at least 32 random characters to `.dev.vars`. See [Configure Basic authentication](#configure-basic-authentication).
-- For Paid, put a separately generated `BETTER_AUTH_SECRET` of at least 32 random characters in `auth/.dev.vars`. Preserve it across deployments; it encrypts the issuer's signing keys. OAuth client secrets are provisioned separately through the [operator CLI](oauth.md).
+Set `deployment_profile` and `account_id` in `infra/terraform.tfvars`, using [terraform.tfvars.example](../infra/terraform.tfvars.example) as a starting point. For Paid, also set `auth_issuer` and `tams_audience` to the public HTTPS origins of the issuer and API, without trailing slashes. For additional buckets, custom domains, anonymous reads, browser origins and webhook receivers, see [installation inputs](reference.md#installation-inputs).
 
-Use a separate, bucket-scoped [R2 token](https://developers.cloudflare.com/r2/api/tokens/) for signing media URLs. Its client IP restrictions apply to clients using those URLs, so a token restricted to the deployment machine prevents other clients from uploading or downloading media. The deployment token can retain its own IP restriction.
+When deploying to an existing store, retain its Worker name, store ID, Durable Object migration history, backend UUIDs and bucket names. Preserve OpenTofu state between deployments. Configure a shared state backend if several operators manage the installation.
 
-`CLOUDFLARE_API_TOKEN` is the only required deployment environment variable. OpenTofu writes the account ID into generated Wrangler configuration. Each Worker's `.dev.vars` supplies runtime secrets through `--secrets-file`; those values do not need to be exported. Protect secret files with mode 0600.
+Put `CLOUDFLARE_API_TOKEN` in the ignored `.env` file. The token needs Workers Scripts and Workers R2 Storage write access. Paid also needs D1 write access. Account lookup requires Account Settings read and log inspection requires Workers Tail permissions. Protect credential files with mode 0600.
 
-From the repository root, run:
+From the repository root, load the token and provision the selected profile.
 
 ```sh
 set -a
@@ -50,26 +45,32 @@ tofu -chdir=infra init
 tofu -chdir=infra apply
 ```
 
-For a new installation, now create the bucket-scoped signing credential and save its keys in `.dev.vars`. For **Paid only**, apply the auth schema and deploy the issuer:
+OpenTofu creates the buckets and generates the Wrangler configuration for each Worker. For Paid, it also creates the issuer database. Make configuration changes in the [files that own those settings](reference.md#configuration-ownership).
+
+Create a separate, bucket-scoped [R2 token](https://developers.cloudflare.com/r2/api/tokens/) with Object Read & Write access to every configured bucket. Save its `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` in `.dev.vars`, following [.dev.vars.example](../.dev.vars.example). IP restrictions on this token apply to media clients using signed URLs. The deployment token can have its own IP restriction.
+
+### Prepare authentication
+
+**Free.** Add `BASIC_AUTH_USERNAME` and a separate random `BASIC_AUTH_PASSWORD` of at least 32 characters to `.dev.vars`. Then [deploy the API](#deploy-the-api). See [Basic authentication](#configure-basic-authentication) for credential requirements and rotation.
+
+**Paid.** Save a separate random `BETTER_AUTH_SECRET` of at least 32 characters in `auth/.dev.vars`. Preserve this secret across deployments. It encrypts the issuer's signing keys. Apply the issuer migrations, then deploy the issuer.
 
 ```sh
 npx wrangler d1 migrations apply DB --remote --config auth/wrangler.deploy.json
 npx wrangler deploy --config auth/wrangler.deploy.json --secrets-file auth/.dev.vars
 ```
 
-For **either profile**, deploy the API:
+### Deploy the API
+
+For either profile, deploy the packaged API Worker with its runtime secrets.
 
 ```sh
 npx wrangler deploy --config wrangler.deploy.json --secrets-file .dev.vars
 ```
 
-OpenTofu provisions private R2 storage and generates the API configuration. Paid also provisions D1 and generates the auth configuration; apply its migrations and deploy the issuer before its TAMS consumer. Wrangler uploads the prebuilt release modules. For Paid, provision clients using the [OAuth guide](oauth.md) before testing the API. For Free, connect using the configured Basic credentials.
+On a new account, run the first Wrangler deployment interactively. Wrangler prompts to register a `workers.dev` subdomain if needed. Using `--secrets-file` on that deployment uploads the secrets and lets Wrangler complete account setup. A separate `secret put` or `secret bulk` first would create a draft Worker and bypass that setup.
 
-On an account without a `workers.dev` subdomain, the first Wrangler deployment prompts to register one before uploading the Worker. Existing subdomains are reused. Upload secrets with `--secrets-file` on the first deployment; a separate `secret put` or `secret bulk` command creates a draft Worker and bypasses Wrangler's first-deployment account setup. New accounts need an interactive first deployment before unattended CI deployments.
-
-Set installation inputs in `infra/terraform.tfvars` and application settings in the base Wrangler files. OpenTofu generates the selected profile's deployment configurations; do not edit those outputs. See [configuration ownership](reference.md#configuration-ownership) for the division between tools and files.
-
-Preserve OpenTofu state between deployments and configure a shared state backend before multiple operators manage the installation. Keep `STORE_ID`, backend identities and Durable Object migration history stable. Bucket and auth database destruction are guarded by `prevent_destroy`.
+For Free, connect with your Basic credentials. For Paid, [provision an OAuth client](oauth.md#provision-clients). Then [check the installation](#check-an-installation).
 
 ## Configure Basic authentication
 
@@ -103,7 +104,7 @@ Delete an instance using `DELETE /objects/{objectId}/instances?storage_id=UUID`.
 
 ## Check an installation
 
-`/healthz` is public. By default, `/readyz`, `/openapi.json` and `/service` require the selected profile's credentials. Enabling `wasm_anonymous_read` also allows public reads of these endpoints. `/readyz` checks SQLite and each configured R2 bucket. Use a disposable installation to [verify the media path](../CONTRIBUTING.md#test-a-deployed-installation). Inspect request logs or infrastructure drift with:
+`/healthz` is public. By default, `/readyz`, `/openapi.json` and `/service` require the selected profile's credentials. Enabling `wasm_anonymous_read` also allows public reads of these endpoints. `/readyz` checks SQLite and each configured R2 bucket. Use a disposable installation to [verify the API and media](#verify-the-api-and-media). Inspect request logs or infrastructure drift with:
 
 ```sh
 npx --no-install wrangler tail --config wrangler.deploy.json

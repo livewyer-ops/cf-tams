@@ -7,7 +7,8 @@ Deploy the [BBC TAMS 8.2 API](https://github.com/bbc/tams/tree/8.2) to your Clou
 | Free | Shared HTTP Basic credentials | API Worker, Durable Object and R2 |
 | Paid | Scoped OAuth client credentials | Same API Worker and storage, plus an issuer Worker and D1 |
 
-Try [your first local store](docs/first-store.md) without a Cloudflare account, or [install on Cloudflare](docs/deployment.md#install) in your own account. The installer verifies and unpacks the TASM release pinned in [runtime.lock.json](runtime.lock.json). Install Aqua and tar. Aqua installs Node.js (including npm) and OpenTofu. The project's npm dependencies supply Wrangler.
+- [Try locally](docs/first-store.md) to run the API on your computer and create a Flow without a Cloudflare account.
+- [Deploy to Cloudflare](docs/deployment.md#install) to install the pinned TASM release in your account.
 
 For a browser-local store or the Demo and Playpen, see TASM. TASM supplies the application archive. This installer provisions the Cloudflare resources. [Application source](https://github.com/livewyer-ops/tasm) · [Deployment pattern](https://tamoss.com/patterns/tasm-cloudflare/) · [Operator documentation](docs/README.md)
 
