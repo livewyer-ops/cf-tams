@@ -7,7 +7,13 @@ npx --no-install wrangler tail --config wrangler.deploy.json
 npx --no-install wrangler tail --config auth/wrangler.deploy.json
 ```
 
-Run each tail in a separate terminal. Use the generated configuration for the installation being investigated. Remove Authorization headers, cookies, credentials and signed media URLs before sharing evidence.
+Run each tail in a separate terminal; the auth Worker exists only for Paid. Use the generated configuration for the installation being investigated. Remove Authorization headers, cookies, credentials and signed media URLs before sharing evidence.
+
+## Basic credentials rejected
+
+Free expects HTTP Basic credentials directly on the API. A 401 means the username, password or authentication scheme is incorrect. A 503 with `configuration_error` means the deployed Basic secrets or `AUTH_MODE` are invalid; check the generated profile configuration and [credential constraints](deployment.md#configure-basic-authentication). A non-local HTTP request is rejected with 403; use HTTPS.
+
+Apply OpenTofu and redeploy the API after changing the profile. Setting secrets alone does not switch authentication. Paid rejects Basic API credentials even when their bindings remain from an earlier deployment.
 
 ## OAuth method mismatch
 
@@ -37,9 +43,9 @@ Find the failed request in the network tab. The OAuth Worker, TAMS Worker and R2
 
 Copy the browser's `Origin` value, including scheme and port, without a URL path or trailing slash. For a page under `https://cuttingroom.github.io/tamstool/`, the origin is `https://cuttingroom.github.io`.
 
-Follow [Configure browser access](deployment.md#configure-browser-access), apply OpenTofu and redeploy both Workers. Test again after any cached preflight expires. API and OAuth preflights do not need bearer tokens; actual TAMS requests do. A failed authenticated request can also be hidden by a missing CORS header, so inspect server logs for its underlying status.
+Follow [Configure browser access](deployment.md#configure-browser-access), apply OpenTofu and redeploy the API and, for Paid, the OAuth Worker. Test again after any cached preflight expires. API and OAuth preflights do not need bearer tokens; actual TAMS requests require the configured authentication method. A failed authenticated request can also be hidden by a missing CORS header, so inspect server logs for its underlying status.
 
-R2 requests must use the signed URL without an OAuth Authorization header. Upload requests must include every header returned with `put_url`, including `If-None-Match`. Preserve these headers in the media CORS policy.
+R2 requests must use the signed URL without a TAMS Authorization header. Upload requests must include every header returned with `put_url`, including `If-None-Match`. Preserve these headers in the media CORS policy.
 
 ## Expired tokens or unavailable verification
 
@@ -49,7 +55,7 @@ A 503 indicates unavailable verification rather than insufficient scope. Inspect
 
 ## Signed media requests fail
 
-Request fresh URLs if their independent one-hour lifetime has elapsed. Do not alter their path or query string. A TAMS bearer token cannot authorise a private R2 URL returned with `presigned=false`; request `presigned=true` for playback.
+Request fresh URLs if their independent one-hour lifetime has elapsed. Do not alter their path or query string. TAMS credentials cannot authorise a private R2 URL returned with `presigned=false`; request `presigned=true` for playback.
 
 For upload signature failures, send every returned header with its original value. A 412 from a repeated conditional PUT means an Object already exists at that allocation; confirm the earlier upload and register it instead of overwriting it.
 

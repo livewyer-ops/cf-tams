@@ -1,1 +1,0 @@
-"""TAMOSS application package."""

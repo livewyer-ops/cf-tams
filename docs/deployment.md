@@ -9,24 +9,41 @@ Install [Aqua](https://aquaproj.github.io/docs/install/) using its verified inst
 ```sh
 aqua install
 npm ci
-uv sync --locked
+npm run runtime:install
 ```
 
-[aqua.yaml](../aqua.yaml) pins Node.js, uv and OpenTofu, with verified downloads recorded in `aqua-checksums.json`. uv installs the Python interpreter selected by [.python-version](../.python-version). npm supplies the locked Wrangler executable. The tool packages cover Linux and macOS on amd64 and arm64; CI runs on Linux amd64. Git and a POSIX shell are also required. Application dependencies and tools install without system-wide package changes.
+Aqua pins Node.js and OpenTofu. npm installs Wrangler. The runtime installer verifies the archive against `runtime.lock.json` and extracts it into a directory named for its digest under `.runtime/`. To use a local archive, pass its path to `npm run runtime:install -- /path/to/archive.tar.gz`.
+
+For a private TASM release, download its asset with an authorised GitHub account, then install the file locally.
+
+```sh
+version=$(node -p 'require("./runtime.lock.json").version')
+mkdir -p .local/releases
+gh release download "v$version" --repo livewyer-ops/tasm --pattern "tasm-cloudflare-$version.tar.gz" --dir .local/releases
+npm run runtime:install -- ".local/releases/tasm-cloudflare-$version.tar.gz"
+```
 
 On a glibc Linux system that also has musl installed, Aqua can select the musl Node.js build. Set `AQUA_LIBC=glibc` in the shell before installing or running tools if that build fails to load. This uses Aqua's native [libc selection](https://aquaproj.github.io/docs/reference/registry-config/overrides/).
 
 ## Install
 
-Complete [tool setup](#set-up-tools). A Cloudflare account with Workers Paid and R2 enabled, an activated billing account and deployment credentials are prerequisites to installation.
+Complete [tool setup](#set-up-tools). A Cloudflare account with R2 enabled and deployment credentials is required. Select the application profile in `infra/terraform.tfvars`:
 
-Configure the installation inputs:
+| `deployment_profile` | API authentication | Resources |
+| --- | --- | --- |
+| `free` | Fixed HTTP Basic username and password; full store access. | API Worker, SQLite Durable Object and private R2 buckets. |
+| `paid` (default) | OAuth client credentials and scoped JWTs. | The same store, plus an OAuth Worker and D1 database. |
 
-- Set `account_id`, `auth_issuer` and `tams_audience` in `infra/terraform.tfvars`, following [terraform.tfvars.example](../infra/terraform.tfvars.example). The issuer and audience are the public HTTPS origins of the auth and TAMS Workers, without trailing slashes. `storage_backends` defaults to the original `MEDIA` bucket; `media_origins` defaults to no browser access.
+The profile selects application resources and authentication. It does not change the Cloudflare subscription, enforce spending caps or limit API features. The Free profile is available for evaluation. The pinned runtime passed the standalone TAMS API and signed-media checks on Workers Free and Workers Paid. Hosted webhook qualification is pending. Production support requires Workers Paid. Check Cloudflare's current [Workers](https://developers.cloudflare.com/workers/platform/limits/), [Durable Object](https://developers.cloudflare.com/durable-objects/platform/pricing/) and [R2](https://developers.cloudflare.com/r2/pricing/) allowances against actual use.
+
+Set the following installation inputs. To retain an existing Wasm store, keep its Worker name, `wasm_store_id`, backend UUIDs and bucket names. Set `wasm_custom_domains` for hostnames in active Cloudflare zones. Set `wasm_anonymous_read = true` to allow public reads while requiring credentials for writes and restricting administrative reads.
+
+- Set `deployment_profile` and `account_id` in `infra/terraform.tfvars`, following [terraform.tfvars.example](../infra/terraform.tfvars.example). For Paid, also set `auth_issuer` and `tams_audience` to the public HTTPS origins of the auth and TAMS Workers, without trailing slashes. Free does not require those URLs. `storage_backends` defaults to the original `MEDIA` bucket; `media_origins` defaults to no browser access.
 - Set `webhook_allowed_hosts` in the same file to permit webhook receivers. It defaults to an empty list, which rejects all registrations; see [Enable webhooks](#enable-webhooks).
-- Put `CLOUDFLARE_API_TOKEN` in the ignored `.env` file and load it into the process environment for both tools. It needs Workers Scripts, D1 and Workers R2 Storage write access; account lookup and log inspection also use Account Settings read and Workers Tail permissions.
+- Put `CLOUDFLARE_API_TOKEN` in the ignored `.env` file and load it into the process environment for both tools. It needs Workers Scripts and Workers R2 Storage write access, plus D1 write access for Paid; account lookup and log inspection also use Account Settings read and Workers Tail permissions.
 - Put `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` in `.dev.vars`, following `.dev.vars.example`. They need Object Read & Write access to the installation's configured buckets. On a new installation, create this signing credential after OpenTofu has provisioned the buckets and before deploying the TAMS Worker.
-- Put a separately generated `BETTER_AUTH_SECRET` of at least 32 random characters in `auth/.dev.vars`. Preserve it across deployments; it encrypts the issuer's signing keys. OAuth client secrets are provisioned separately through the [operator CLI](oauth.md).
+- For Free, add `BASIC_AUTH_USERNAME` and a separately generated `BASIC_AUTH_PASSWORD` of at least 32 random characters to `.dev.vars`. See [Configure Basic authentication](#configure-basic-authentication).
+- For Paid, put a separately generated `BETTER_AUTH_SECRET` of at least 32 random characters in `auth/.dev.vars`. Preserve it across deployments; it encrypts the issuer's signing keys. OAuth client secrets are provisioned separately through the [operator CLI](oauth.md).
 
 Use a separate, bucket-scoped [R2 token](https://developers.cloudflare.com/r2/api/tokens/) for signing media URLs. Its client IP restrictions apply to clients using those URLs, so a token restricted to the deployment machine prevents other clients from uploading or downloading media. The deployment token can retain its own IP restriction.
 
@@ -42,21 +59,42 @@ tofu -chdir=infra init
 tofu -chdir=infra apply
 ```
 
-For a new installation, now create the bucket-scoped signing credential and save its keys in `.dev.vars`. Then apply the auth schema and deploy:
+For a new installation, now create the bucket-scoped signing credential and save its keys in `.dev.vars`. For **Paid only**, apply the auth schema and deploy the issuer:
 
 ```sh
 npx wrangler d1 migrations apply DB --remote --config auth/wrangler.deploy.json
 npx wrangler deploy --config auth/wrangler.deploy.json --secrets-file auth/.dev.vars
+```
+
+For **either profile**, deploy the API:
+
+```sh
 npx wrangler deploy --config wrangler.deploy.json --secrets-file .dev.vars
 ```
 
-OpenTofu provisions private R2 storage and the auth D1 database, then generates both Worker configurations. Apply D1 migrations and deploy the auth Worker before its TAMS consumer. Wrangler's native build hook prepares locked Python dependencies. Provision clients using the [OAuth guide](oauth.md) before testing the API.
+OpenTofu provisions private R2 storage and generates the API configuration. Paid also provisions D1 and generates the auth configuration; apply its migrations and deploy the issuer before its TAMS consumer. Wrangler uploads the prebuilt release modules. For Paid, provision clients using the [OAuth guide](oauth.md) before testing the API. For Free, connect using the configured Basic credentials.
 
 On an account without a `workers.dev` subdomain, the first Wrangler deployment prompts to register one before uploading the Worker. Existing subdomains are reused. Upload secrets with `--secrets-file` on the first deployment; a separate `secret put` or `secret bulk` command creates a draft Worker and bypasses Wrangler's first-deployment account setup. New accounts need an interactive first deployment before unattended CI deployments.
 
-Set installation inputs in `infra/terraform.tfvars` and application settings in the base Wrangler files. OpenTofu generates both deployment configurations; do not edit those outputs. See [configuration ownership](reference.md#configuration-ownership) for the division between tools and files.
+Set installation inputs in `infra/terraform.tfvars` and application settings in the base Wrangler files. OpenTofu generates the selected profile's deployment configurations; do not edit those outputs. See [configuration ownership](reference.md#configuration-ownership) for the division between tools and files.
 
 Preserve OpenTofu state between deployments and configure a shared state backend before multiple operators manage the installation. Keep `STORE_ID`, backend identities and Durable Object migration history stable. Bucket and auth database destruction are guarded by `prevent_destroy`.
+
+## Configure Basic authentication
+
+The Free profile accepts HTTP Basic credentials directly on the TAMS API. Store `BASIC_AUTH_USERNAME` and `BASIC_AUTH_PASSWORD` alongside the R2 keys in `.dev.vars`, with mode 0600. Generate a unique random password; never reuse a Cloudflare deployment token, R2 key or OAuth client secret.
+
+The username must contain 1–128 characters without a colon or control characters. The password must contain 32–1,024 characters without control characters. Credentials use UTF-8. Both values are required; missing or invalid server configuration returns 503. Incorrect credentials return 401 with a Basic challenge. The Worker accepts HTTPS, with HTTP permitted only for localhost development.
+
+Configure a client's HTTP Basic username and password against the API URL. The account has administrator access to the whole store, and its username is recorded as the creator of new resources. There is no token endpoint, automatic expiry or separate access per user. Do not send these credentials with signed R2 media requests.
+
+To rotate the password, replace it in the protected `.dev.vars`, deploy the API with `--secrets-file .dev.vars`, then update clients. Requests using the old password stop authenticating once the new deployment is active; already-issued media URLs retain their independent expiry. Keep a protected copy of the previous secret if rollout recovery requires it.
+
+## Change deployment profile
+
+To move Free to Paid, set `deployment_profile = "paid"`, supply the OAuth URLs and issuer secret, then follow the Paid installation steps. The plan must preserve every existing bucket and metadata identity. Deploy and provision the issuer before deploying the API. The API switches authentication when deployed, so update clients to OAuth at that point. Basic credentials are not accepted by Paid, even if their secret bindings remain. Remove those bindings and local copies after verification if rollback no longer needs them.
+
+Changing an existing Paid installation to Free would remove its auth database from the desired resources. The `prevent_destroy` guard blocks that plan. Back up auth data and agree its retirement before using an authorised maintenance checkout to remove only the D1 destruction guard. Preserve the auth Worker configuration outside the generated path and prepare Basic credentials. Generate the Free API configuration with `tofu -chdir=infra apply -target=local_file.worker_config`, then deploy and verify the API with Basic authentication. Delete the unused auth Worker through Wrangler using the saved configuration. Review and apply the full OpenTofu plan to remove D1 and its generated configuration, then restore the guard. The targeted apply is only an intermediate migration step; finish with a full plan showing no changes. Keep storage guards and identities unchanged throughout. Account billing must be changed separately in Cloudflare.
 
 ## Add a storage backend
 
@@ -74,7 +112,7 @@ Delete an instance using `DELETE /objects/{objectId}/instances?storage_id=UUID`.
 
 ## Check an installation
 
-`/healthz` is public; `/readyz`, `/openapi.json` and `/service` require an OAuth access token. `/readyz` checks metadata access. The [live integration tests](../CONTRIBUTING.md#test-a-deployed-installation) verify the media path. Inspect request logs or infrastructure drift with:
+`/healthz` is public. By default, `/readyz`, `/openapi.json` and `/service` require the selected profile's credentials. Enabling `wasm_anonymous_read` also allows public reads of these endpoints. `/readyz` checks SQLite and each configured R2 bucket. Use a disposable installation to [verify the media path](../CONTRIBUTING.md#test-a-deployed-installation). Inspect request logs or infrastructure drift with:
 
 ```sh
 npx --no-install wrangler tail --config wrangler.deploy.json
@@ -85,7 +123,7 @@ The plan returns exit code 0 when infrastructure matches its configuration, 2 wh
 
 ## Update and recover
 
-Run the [local checks](../CONTRIBUTING.md#run-local-checks) before deployment. Record the active versions with `npx wrangler deployments list --config wrangler.deploy.json` and the equivalent auth configuration command. Inspect the OpenTofu plan, apply additive D1 migrations, deploy the issuer, then deploy TAMS and validate real token issuance and playback.
+Run the [local checks](../CONTRIBUTING.md#run-local-checks) before deployment. Record the active versions with `npx wrangler deployments list --config wrangler.deploy.json` and, for Paid, the equivalent auth configuration command. Inspect and apply the OpenTofu plan after installing the pinned archive. For Paid, apply additive D1 migrations and deploy the issuer first. Deploy TAMS and validate authentication and playback for the selected profile.
 
 Use `npx wrangler rollback VERSION_ID --config wrangler.deploy.json` to restore a recorded TAMS version; use the auth configuration to restore an issuer version. Rollback restores code and bindings, not database contents. Keep migrations compatible with the previous version during rollout. Record a D1 bookmark with `npx wrangler d1 time-travel info DB --config auth/wrangler.deploy.json` before future schema changes. Follow [Cloudflare's recovery procedure](https://developers.cloudflare.com/d1/reference/time-travel/) if restoration is required. Preserve the signing-key encryption secret with the database backup.
 
@@ -99,10 +137,11 @@ Stop ingest and client use. Load the deployment credential as described under [I
 
 ```sh
 npx --no-install wrangler delete --config wrangler.deploy.json
+# Paid only:
 npx --no-install wrangler delete --config auth/wrangler.deploy.json
 ```
 
-Deleting the API Worker also deletes its Durable Object namespace and metadata. Verify both Workers and the namespace are absent using Cloudflare's resource inventory; deleting the Workers does not delete R2 or D1. Keep Wrangler's dependency checks enabled and investigate any remaining consumers instead of forcing deletion. See the [Worker deletion API](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/methods/delete/).
+Deleting the API Worker also deletes its Durable Object namespace and metadata. Verify both Workers and the namespace are absent using Cloudflare's resource inventory; deleting the Workers does not delete R2 or D1. Keep Wrangler's dependency checks enabled and investigate any remaining consumers instead of forcing deletion. If Wrangler fails while listing unrelated KV namespaces, use the [Worker deletion API](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/methods/delete/) for the verified account and Worker name with its default dependency checks.
 
 Revoke the installation's R2 signing credential after media retention is complete, so outstanding upload URLs cannot refill the buckets. Empty every bucket listed in `storage_backends` using Cloudflare's native [Empty Bucket action](https://developers.cloudflare.com/r2/buckets/delete-buckets/), then verify that each is empty. Keep the deployment credential until resource cleanup finishes.
 
@@ -124,15 +163,13 @@ Check that state is empty and confirm in Cloudflare that D1, every configured R2
 
 ## Run locally
 
-Follow [your first local store](first-store.md) for credentials, local D1 migrations, client provisioning and the Worker commands. Keep local development in a separate checkout from deployment credentials.
-
-Wrangler connects the service binding between the auth and TAMS sessions. Local resources persist under each Worker's `.wrangler/state`. The base configuration uses issuer `http://127.0.0.1:8788` and audience `http://127.0.0.1:8787`. Deployments use the generated configurations; their remote D1 binding is intended for explicit remote administration. See [Cloudflare's multiple-Worker development guide](https://developers.cloudflare.com/workers/local-development/multi-workers/).
+Follow [your first local store](first-store.md) to run the packaged Worker locally with Basic credentials.
 
 ## Use media URLs
 
 Create a Flow, allocate storage with `POST /flows/{flowId}/storage`, and PUT bytes to each returned `put_url.url` using **every returned header**. Uploads include a signed `If-None-Match: *` header to prevent overwriting an existing Object. A retry after a successful upload returns 412; register the uploaded Object instead of replacing it.
 
-Register Segments only after uploads finish. The service checks R2 metadata before accepting controlled Objects. Request Segment listings with `presigned=true` for URLs usable without additional credentials. Signed URLs expire after one hour and support HTTP Range requests. A `presigned=false` URL requires separate S3 authentication against the private bucket; the TAMS bearer token does not authorise R2.
+Register Segments only after uploads finish. The service checks R2 metadata before accepting controlled Objects. Request Segment listings with `presigned=true` for URLs usable without additional credentials. Signed URLs expire after one hour and support HTTP Range requests. A `presigned=false` URL requires separate S3 authentication against the private bucket; TAMS credentials do not authorise R2.
 
 Once Flow deletion is accepted, new allocations and Segment registration for that Flow are rejected. Deletion removes metadata through alarms and retains physical bytes until the allocation is at least 24 hours old. Unregistered allocations expire after the same period. This leaves time for upload URLs to expire before cleanup. A deletion request becomes `done` when the selected metadata has been removed and physical cleanup has been durably queued. Physical cleanup continues independently; storage failures are retried.
 
@@ -164,17 +201,17 @@ api_cors = {
 media_origins = ["https://editor.example.com"]
 ```
 
-Origins include the scheme and optional port, without a path or trailing slash. HTTP origins work for local development. Apply OpenTofu and redeploy both Workers. OpenTofu manages the R2 policy, the API's `API_CORS` setting and the issuer's `CORS_ORIGINS` setting. The issuer uses the same origins with its own GET/POST methods. Do not independently change the bucket policy through the dashboard or Wrangler.
+Origins include the scheme and optional port, without a path or trailing slash. HTTP origins work for local development. Apply OpenTofu and redeploy the API and, for Paid, the OAuth Worker. OpenTofu manages the R2 policy, the API's `API_CORS` setting and the issuer's `CORS_ORIGINS` setting. The issuer uses the same origins with its own GET/POST methods. Do not independently change the bucket policy through the dashboard or Wrangler.
 
 Use the [CORS reference](reference.md#cors-defaults) to customise methods, headers, exposed headers and preflight caching. Preserve the signed upload headers in the media policy. Enable `allow_credentials` only when the application needs browser credential mode, using explicit origins.
 
-API preflight requests do not require a bearer token; actual requests still do. CORS does not make the R2 bucket public or replace signed URLs. For direct local Worker development, set the equivalent JSON policy in the `API_CORS` Wrangler variable. Local development does not apply a remote R2 policy.
+API preflight requests are public. Actual requests follow the configured authentication and anonymous-read policy. CORS does not make the R2 bucket public or replace signed URLs. For direct local Worker development, set the equivalent JSON policy in the `API_CORS` Wrangler variable. Local development does not apply a remote R2 policy.
 
-For example, start Wrangler with `--var 'API_CORS:{"origins":["http://localhost:3000"]}'`. Set `TAMS_TEST_ORIGIN=http://localhost:3000` alongside the existing live-test URL and token to run the Worker CORS integration check. CI uses this configuration automatically.
+For example, start Wrangler with `--var 'API_CORS:{"origins":["http://localhost:3000"]}'`. Send an OPTIONS request with that Origin and inspect the access-control headers.
 
 ## Qualify the API
 
-Use a disposable installation and provision a dedicated checker client with `tams-api/admin`. Permit the checker's callback hostname through [the webhook allowlist](#enable-webhooks). Open a deployed [TAMS Checker](https://github.com/livewyer-ops/tams-checker), enter this installation's HTTPS URL and select OAuth client credentials. Supply its token endpoint, client ID and secret using the registered authentication method. Complete Turnstile and run the TAMS 8.2 API checks. Keep the browser open until execution and cleanup finish, then export the report. Record both deployed Worker versions with the report so it identifies the candidate tested.
+Use a disposable installation. For Free, select HTTP Basic in the checker and supply its configured username and password. For Paid, provision a dedicated checker client with `tams-api/admin`, select OAuth client credentials and supply its token endpoint, client ID and secret using the registered authentication method. Permit the checker's callback hostname through [the webhook allowlist](#enable-webhooks). Open a deployed [TAMS Checker](https://github.com/livewyer-ops/tams-checker), enter this installation's HTTPS URL, complete Turnstile and run the TAMS 8.2 API checks. Keep the browser open until execution and cleanup finish, then export the report. Record the profile and deployed Worker versions with the report so it identifies the candidate tested.
 
 The checker creates and cleans up its own resources. Immutable test Profiles remain because BBC TAMS provides no Profile deletion operation; the report also lists any other cleanup residuals. It does not update shared Service metadata. A complete Pass covers the checker's published API scope, including immediate media transfer and advertised webhooks. Elapsed URL and Object lifetimes, physical reclamation and its other documented exclusions are outside that verdict.
 
@@ -182,6 +219,6 @@ For command-line runs, follow the [checker CLI workflow](https://github.com/live
 
 ## Maintain dependencies
 
-Keep all lockfiles in version control. `uv.lock` covers Python dependencies; `pylock.toml` covers Pyodide packages; `package-lock.json` pins Wrangler and the auth dependencies; `infra/.terraform.lock.hcl` pins the OpenTofu providers. Aqua tool versions and checksums are shared by local setup and CI. For an approved tool update, edit `aqua.yaml`, run `aqua update-checksum` and review both files. Update the Python interpreter through `.python-version` within the compatibility range in `pyproject.toml`. Refresh dependencies explicitly and repeat the local runtime checks before deploying.
+To update TASM, pin the version and digest of a tested release in `runtime.lock.json`. Install the archive, apply OpenTofu, then apply any D1 migrations and deploy the Paid issuer before the API Worker. Retain the WasmStore class, migration tags, Worker name, store ID, backend UUIDs and bucket names when updating a populated Wasm installation.
 
-Follow the installation order for updates: apply OpenTofu, apply D1 migrations, then deploy both Workers. Applying first regenerates the deployment configuration from the checked-in bases, including changes to bindings, variables or migrations. Append future Durable Object class migrations to Wrangler and SQL migrations to the application. Do not rename `TamsStore`, change `STORE_ID`, switch buckets or delete migration entries as an upgrade procedure. Existing AWS/PostgreSQL data migration is outside this installation's scope.
+Aqua pins Node.js and OpenTofu, npm pins Wrangler, and the OpenTofu lock file pins the providers. Runtime dependencies belong to the TASM release.

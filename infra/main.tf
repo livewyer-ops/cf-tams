@@ -14,6 +14,17 @@ terraform {
 
 provider "cloudflare" {}
 
+variable "deployment_profile" {
+  type        = string
+  default     = "paid"
+  nullable    = false
+  description = "free uses static HTTP Basic authentication; paid uses the OAuth issuer. Does not change the Cloudflare subscription."
+  validation {
+    condition     = contains(["free", "paid"], var.deployment_profile)
+    error_message = "deployment_profile must be free or paid."
+  }
+}
+
 variable "account_id" {
   type        = string
   description = "Cloudflare account containing the Worker and R2 bucket."
@@ -60,7 +71,7 @@ variable "storage_backends" {
       length(distinct([for backend in var.storage_backends : backend.label])) == length(var.storage_backends) &&
       alltrue([for binding, backend in var.storage_backends :
         can(regex("^[A-Z][A-Z0-9_]*$", binding)) &&
-        !contains(["AUTH", "STORE", "API_TOKEN", "STORE_ID", "STORAGE_BACKENDS", "API_CORS", "R2_ENDPOINT", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "WEBHOOK_ALLOWED_HOSTS"], binding) &&
+        !contains(["AUTH", "AUTH_MODE", "BASIC_AUTH_USERNAME", "BASIC_AUTH_PASSWORD", "STORE", "API_TOKEN", "STORE_ID", "STORAGE_BACKENDS", "API_CORS", "R2_ENDPOINT", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "WEBHOOK_ALLOWED_HOSTS"], binding) &&
         can(regex("^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$", backend.bucket_name)) &&
         can(regex("(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", backend.storage_id)) &&
         trimspace(backend.label) != ""
@@ -119,7 +130,10 @@ resource "cloudflare_r2_bucket_cors" "media" {
 }
 
 locals {
-  worker = jsondecode(file("${path.module}/../wrangler.jsonc"))
+  runtime_lock  = jsondecode(file("${path.module}/../runtime.lock.json"))
+  runtime_dir   = ".runtime/${local.runtime_lock.sha256}"
+  worker        = jsondecode(file("${path.module}/../${local.runtime_dir}/api/wrangler.json"))
+  oauth_enabled = var.deployment_profile == "paid"
 }
 
 resource "local_file" "worker_config" {
@@ -127,8 +141,19 @@ resource "local_file" "worker_config" {
   file_permission = "0644"
   content = jsonencode(merge(local.worker, {
     account_id = var.account_id
+    name       = coalesce(var.wasm_worker_name, local.worker.name)
+    main       = "${local.runtime_dir}/api/${local.worker.main}"
+    base_dir   = "${local.runtime_dir}/api"
+    routes     = [for domain in var.wasm_custom_domains : { pattern = domain, custom_domain = true }]
+    services   = local.oauth_enabled ? [{ binding = "AUTH", service = local.auth_worker_name, entrypoint = "TokenVerifier" }] : []
+    secrets = {
+      required = concat(["R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY"], local.oauth_enabled ? [] : ["BASIC_AUTH_USERNAME", "BASIC_AUTH_PASSWORD"])
+    }
     r2_buckets = [for binding, bucket in cloudflare_r2_bucket.media : { binding = binding, bucket_name = bucket.name }]
     vars = merge(local.worker.vars, {
+      AUTH_MODE             = local.oauth_enabled ? "oauth2" : "basic"
+      STORE_ID              = coalesce(var.wasm_store_id, local.worker.vars.STORE_ID)
+      ANONYMOUS_READ        = tostring(var.wasm_anonymous_read)
       API_CORS              = jsonencode(var.api_cors)
       STORAGE_BACKENDS      = jsonencode(var.storage_backends)
       R2_ENDPOINT           = "https://${var.account_id}.r2.cloudflarestorage.com"

@@ -1,6 +1,6 @@
 # Configure OAuth clients
 
-cf-tams accepts JWT bearer tokens obtained with the OAuth `client_credentials` grant. Client administration uses Better Auth's server APIs through Wrangler's authenticated D1 binding. There is no public operator login or OAuth administration UI. See the [endpoint reference](reference.md#endpoints) for token issuance and discovery URLs.
+The Paid profile accepts JWT bearer tokens obtained with the OAuth `client_credentials` grant. For the Free profile, use [Basic authentication](deployment.md#configure-basic-authentication). Client administration uses Better Auth's server APIs through Wrangler's authenticated D1 binding. There is no public operator login or OAuth administration UI. See the [endpoint reference](reference.md#endpoints) for token issuance and discovery URLs.
 
 ## Provision clients
 
@@ -14,7 +14,7 @@ set +a
 npm run auth:client -- bootstrap --config auth/wrangler.deploy.json --remote
 ```
 
-Bootstrap creates the private operator account and TAMS resource. Run it once per database. For local development, follow the [tutorial](first-store.md); omit `--remote` and use the base auth configuration.
+Bootstrap creates the private operator account and TAMS resource. Run it once per database. For a local issuer, omit `--remote` and pass the path to its local Wrangler configuration.
 
 Create an independent client for each application or operator. For example, to grant read access:
 

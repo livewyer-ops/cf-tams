@@ -1,31 +1,34 @@
-name: Check
+name: Check installer
 on: [push, pull_request]
 permissions:
   contents: read
-
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: aquaproj/aqua-installer@96a9bc20066c5bf5e275b41019cfc165b25f4e2e # v4.0.5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: aquaproj/aqua-installer@96a9bc20066c5bf5e275b41019cfc165b25f4e2e
         with:
           aqua_version: v2.63.0
           aqua_opts: ""
         env:
           AQUA_GITHUB_TOKEN: ${{ github.token }}
       - run: npm ci
-      - run: uv sync --locked
-      - run: uv run ruff check src tests
-      - run: uv run ruff format --check src tests
-      - run: uv run pytest -q
-      - run: tofu -chdir=infra init -backend=false -input=false -lockfile=readonly
+      - run: npm test
+      - name: Install the pinned runtime
+        if: vars.TASM_RELEASE_MIRROR == ''
+        run: npm run runtime:install
+      - name: Install the pinned archive from a release mirror
+        if: vars.TASM_RELEASE_MIRROR != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MIRROR: ${{ vars.TASM_RELEASE_MIRROR }}
+        run: |
+          version=$(node -p 'require("./runtime.lock.json").version')
+          asset="tasm-cloudflare-$version.tar.gz"
+          gh release download "v$version" --repo "$MIRROR" --pattern "$asset" --dir "$RUNNER_TEMP"
+          npm run runtime:install -- "$RUNNER_TEMP/$asset"
+      - run: tofu -chdir=infra init -backend=false -lockfile=readonly
       - run: tofu -chdir=infra fmt -check
       - run: tofu -chdir=infra validate
       - run: tofu -chdir=infra test
-      - run: npx --no-install wrangler deploy --dry-run
-      - run: npm run auth:types
-      - run: npm run auth:check
-      - run: npx --no-install wrangler deploy --config auth/wrangler.jsonc --dry-run
-      - run: npm run auth:test
-      - run: git diff --exit-code -- uv.lock pylock.toml package-lock.json infra/.terraform.lock.hcl aqua-checksums.json

@@ -1,45 +1,14 @@
-# Cloudflare TAMS
+# TASM on Cloudflare
 
-cf-tams is an implementation of [BBC TAMS 8.2](https://github.com/bbc/tams/tree/8.2) on Cloudflare Workers. A Time Addressable Media Store records media as timestamped Segments in Flows, so clients can find and retrieve a time range without downloading a whole recording.
+Deploy the BBC TAMS 8.2 API to your Cloudflare account with OpenTofu and Wrangler. One SQLite Durable Object stores metadata. Media clients upload and read bytes directly in private R2 buckets using signed URLs.
 
-The API runs in a Python Worker with FastAPI. A SQLite-backed Durable Object holds metadata, private R2 buckets hold media, and a separate TypeScript Worker with D1 provides OAuth client credentials.
+| Deployment profile | API access | Cloudflare resources |
+| --- | --- | --- |
+| Free | Shared HTTP Basic credentials | API Worker, Durable Object and R2 |
+| Paid | Scoped OAuth client credentials | Same API Worker and storage, plus an issuer Worker and D1 |
 
-## Features
+Start with [your first local store](docs/first-store.md) or [install on Cloudflare](docs/deployment.md#install). The installer verifies and unpacks the TASM release pinned in [runtime.lock.json](runtime.lock.json). Installing requires Node.js, OpenTofu, Wrangler and tar.
 
-- Sources, Flows, Segments, collections, Profiles and tags through the TAMS API.
-- Direct media upload and download with signed R2 URLs and HTTP Range support.
-- Multiple R2 storage backends, with asynchronous Object copying and deletion.
-- Scoped OAuth access, configurable browser CORS and webhook receiver allowlists.
-- Native OpenTofu infrastructure configuration and Wrangler deployments.
+TASM maintains the Rust application, both Wasm builds, and the browser Demo and Playpen. This repository owns Cloudflare installation settings and provisioning. [Application source](https://github.com/livewyer-ops/tasm) · [Deployment pattern](https://tamoss.com/patterns/tasm-cloudflare/) · [Operator documentation](docs/README.md)
 
-Clients provide ingest and playback. cf-tams has no built-in media browser, transcoder or OAuth login UI. See the [supported scope and operating limits](docs/reference.md#scope-and-limits) before sizing an installation.
-
-## Get started
-
-Start with [your first local store](docs/first-store.md). The tutorial runs both Workers, obtains an access token and creates a Flow without a Cloudflare account.
-
-You need Git, a POSIX shell and [Aqua](https://aquaproj.github.io/docs/install/) on Linux or macOS. The repository supplies pinned Node.js, Python, uv, OpenTofu and Wrangler versions through its tool manifest and lockfiles.
-
-For real media transfers, follow [Deploy and operate](docs/deployment.md#install). Deployment requires a Cloudflare account with Workers Paid and R2 enabled. OpenTofu provisions storage and generates configuration; Wrangler applies migrations and deploys the Workers and their secrets.
-
-## Documentation
-
-| Guide | Use it to |
-| --- | --- |
-| [Documentation index](docs/README.md) | Find tutorials, how-to guides, reference and explanation. |
-| [Your first local store](docs/first-store.md) | Try the API and OAuth locally. |
-| [Deploy and operate](docs/deployment.md) | Install, configure, update and remove an installation. |
-| [Configure OAuth clients](docs/oauth.md) | Provision access for TAMSTool, Cutting Room and other clients. |
-| [Configuration and API reference](docs/reference.md) | Look up settings, endpoints, permissions and limits. |
-| [Troubleshooting](docs/troubleshooting.md) | Diagnose authentication, webhooks, CORS and playback. |
-| [Architecture](docs/design.md) | Understand metadata consistency, authentication and media storage. |
-
-The API contract is pinned to [BBC TAMS 8.2's OpenAPI specification](https://github.com/bbc/tams/blob/8.2/api/TimeAddressableMediaStore.yaml). An installation's qualification result applies to the tested deployment and the checker's published scope; see [Qualify the API](docs/deployment.md#qualify-the-api).
-
-## Contribute and get support
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, checks and pull requests. Report bugs and request features through [GitHub Issues](https://github.com/livewyer-ops/cf-tams/issues). Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
-
-## Licence
-
-Licensed under the [Apache License 2.0](LICENSE). The API and domain rules derive from [TAMOSS](https://github.com/livewyer-ops/tamoss); [NOTICE](NOTICE) records the upstream revisions and BBC TAMS attribution.
+Licensed under [Apache-2.0](LICENSE). The runtime distribution includes its own licence and third-party notices.

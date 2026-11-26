@@ -3,22 +3,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "auth:types": "wrangler types --config auth/wrangler.jsonc auth/worker-configuration.d.ts",
-    "auth:check": "tsc --project auth/tsconfig.json",
-    "auth:test": "node --experimental-strip-types --test auth/auth.test.ts",
-    "auth:client": "node --experimental-strip-types auth/operator.ts"
+    "test": "node --test tests/install-runtime.test.mjs",
+    "runtime:install": "node scripts/install-runtime.mjs",
+    "auth:client": "node scripts/auth-client.mjs"
   },
   "engines": {
     "node": ">=22"
   },
   "devDependencies": {
-    "@types/node": "22.20.4",
-    "typescript": "5.9.3",
     "wrangler": "4.136.2"
-  },
-  "dependencies": {
-    "@better-auth/oauth-provider": "1.7.6",
-    "better-auth": "1.7.6",
-    "jose": "6.2.12"
   }
 }

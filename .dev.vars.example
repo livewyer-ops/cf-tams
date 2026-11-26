@@ -2,3 +2,8 @@
 # in .env. OAuth issuer secrets belong in auth/.dev.vars.
 R2_ACCESS_KEY_ID=replace-with-bucket-scoped-r2-access-key
 R2_SECRET_ACCESS_KEY=replace-with-bucket-scoped-r2-secret-key
+
+# Required only with deployment_profile = "free". Generate a separate random
+# password of at least 32 characters. This account has full store access.
+# BASIC_AUTH_USERNAME=operator
+# BASIC_AUTH_PASSWORD=replace-with-a-new-random-password

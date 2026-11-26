@@ -20,3 +20,7 @@ dist/
 
 .venv-workers/
 python_modules/
+wasm/target/
+wasm/pkg/
+
+.runtime/

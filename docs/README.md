@@ -2,7 +2,7 @@
 
 ## Tutorial
 
-[Your first local store](first-store.md) takes you through starting the Workers, obtaining an OAuth token and creating a Flow. It needs no Cloudflare account.
+[Your first local store](first-store.md) takes you through starting the API Worker, connecting with Basic credentials and creating a Flow. It needs no Cloudflare account.
 
 ## How-to guides
 

@@ -1,6 +1,10 @@
-account_id    = "00000000000000000000000000000000"
+# free: HTTP Basic credentials; paid: OAuth issuer (the default).
+# This selects application resources, not the account's Cloudflare subscription.
+deployment_profile = "paid"
+account_id         = "00000000000000000000000000000000"
+# Required only for paid; omit both for free.
 auth_issuer   = "https://cf-tams-auth.YOUR-SUBDOMAIN.workers.dev"
-tams_audience = "https://cf-tams.YOUR-SUBDOMAIN.workers.dev"
+tams_audience = "https://cf-tams-wasm-experiment.YOUR-SUBDOMAIN.workers.dev"
 media_origins = []
 
 # Exact receiver hostnames or subdomain patterns such as *.example.com.
