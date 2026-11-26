@@ -28,6 +28,15 @@ jobs:
           asset="tasm-cloudflare-$version.tar.gz"
           gh release download "v$version" --repo "$MIRROR" --pattern "$asset" --dir "$RUNNER_TEMP"
           npm run runtime:install -- "$RUNNER_TEMP/$asset"
+      - name: Start the local store and read the service description
+        shell: bash
+        run: |
+          set -m
+          npm run dev &
+          store=$!
+          trap 'kill -- -"$store" || true' EXIT
+          curl --fail --silent --show-error --retry-connrefused --retry 20 --retry-delay 1 http://127.0.0.1:8787/healthz
+          curl --fail --silent --show-error --netrc-file .local/first-store/netrc http://127.0.0.1:8787/service | jq -e '.api_version == "8.2"'
       - run: tofu -chdir=infra init -backend=false -lockfile=readonly
       - run: tofu -chdir=infra fmt -check
       - run: tofu -chdir=infra validate
