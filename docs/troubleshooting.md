@@ -23,7 +23,7 @@ Apply OpenTofu and redeploy the API after changing the profile. Setting secrets 
 
 A 403 with `insufficient_scope` means the token lacks permission for the requested operation. List clients and update the relevant client's scopes using [the operator CLI](oauth.md#rotate-or-disable-credentials), then obtain a new token. Existing tokens keep their original scopes until expiry.
 
-Write does not imply read. An editor usually needs both; Flow and Segment deletion additionally needs delete. Webhook registration, updates and deletion require write. Check the [permission table](reference.md#oauth-permissions) before granting administrator access.
+Write does not imply read. An editor usually needs both; Flow and Segment deletion additionally needs delete. Creating or replacing a webhook requires both read and write, or admin. Deleting a webhook requires write or admin. Check the [permission table](reference.md#oauth-permissions) before granting administrator access.
 
 ## Webhook registration returns 400
 
