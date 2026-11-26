@@ -33,4 +33,6 @@ curl --fail --user "$BASIC_AUTH_USERNAME:$BASIC_AUTH_PASSWORD" \
 curl --fail --user "$BASIC_AUTH_USERNAME:$BASIC_AUTH_PASSWORD" "$api/flows/$flow"
 ```
 
+The service response includes `api_version` set to `8.2`. The final GET returns the Flow you created with its `id` equal to `$flow`.
+
 Stop the local Worker with Ctrl-C. Restart it with the same Wrangler configuration to reopen the store. For signed media transfers and OAuth provisioning, follow [Deploy and operate](deployment.md#install).
